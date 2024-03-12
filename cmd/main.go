@@ -1,19 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"github.com/AlexanderHOtt/lsmtree/pkg/lsmtree"
 )
 
 func main() {
-	tree := lsmtree.New(10)
-	tree.Put(1, 1)
-	tree.Put(2, 2)
-	tree.Put(3, 3)
-	tree.Put(4, 4)
-	println("buf ", tree)
-	for i, e := range tree.GetRange(1, 3) {
-		fmt.Println(i, " ", e)
+	lsm := lsmtree.New(5)
+	for i := 0; i < 5000; i++ {
+		lsm.Put(i, i)
 	}
+
+	lsm.Put(100, 100)
 
 }

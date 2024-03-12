@@ -1,10 +1,19 @@
 package lsmtree
 
 import (
+	// "bytes"
+	// "encoding/gob"
 	"errors"
-	"fmt"
 	"time"
+
+	"github.com/AlexanderHOtt/lsmtree/pkg/config"
+	"github.com/AlexanderHOtt/lsmtree/pkg/entry"
+	"github.com/AlexanderHOtt/lsmtree/pkg/level"
+	_logger "github.com/AlexanderHOtt/lsmtree/pkg/logger"
+	// "github.com/charmbracelet/log"
 )
+
+var logger = _logger.Logger
 
 type KVStore interface {
 	Put(int, int)
@@ -12,63 +21,78 @@ type KVStore interface {
 	Delete(int)
 }
 
-type Entry struct {
-	Key       int
-	Value     int
-	tombstone bool
-	timestamp int64
-}
-
-func (e Entry) String() string {
-	if !e.tombstone {
-		return fmt.Sprintf("%d: %d [%d] | [%t]", e.Key, e.Value, e.timestamp, e.tombstone)
-	}
-	return "<deleted>"
-}
-
 type LSMTree struct {
-	buf      []Entry
-	size     int
-	capacity int
+	buf []entry.Entry
+	// len          int
+	// capacity     int
+	// levels      []level.Level
+	levels      level.Levels
+	scaleFactor int
 }
 
+func (lsm *LSMTree) Len() int {
+	return len(lsm.buf)
+}
+
+func (lsm *LSMTree) Cap() int {
+	return cap(lsm.buf)
+}
+
+// New LSMTree
 func New(capacity int) *LSMTree {
-	return &LSMTree{buf: make([]Entry, capacity), size: 0, capacity: capacity}
+	return &LSMTree{
+		buf: make([]entry.Entry, 0, capacity),
+		// levels: []level.Level{
+		// 	level.New(capacity * config.Cfg.ScaleFactor),
+		// },
+		levels:      level.NewLevels(capacity),
+		scaleFactor: config.Cfg.ScaleFactor}
 }
 
-func (l *LSMTree) Put(key int, value int) {
-	entry := Entry{Key: key, Value: value, timestamp: time.Now().UnixNano(), tombstone: false}
-	l.put(&entry)
+func (lsm *LSMTree) Put(key int, value int) {
+	ent := entry.New(key, value)
+	logger.Info("Putting", "kv", ent)
+	lsm.put(&ent)
 }
 
-func (l *LSMTree) put(entry *Entry) {
-	l.buf[l.size] = *entry
-	l.size++
+func (lsm *LSMTree) put(ent *entry.Entry) {
+	lsm.buf = append(lsm.buf, *ent)
+	logger.Debugf("mem buf len/cap %d/%d", lsm.Len(), lsm.Cap())
+
+	// compaction
+	if lsm.Len() >= lsm.Cap() {
+		logger.Info("mem buf full, compacting level", "buf_len", len(lsm.buf))
+		lsm.levels.Append(&lsm.buf)
+
+		logger.Debug("replacing mem buf", "cap", lsm.Cap())
+		//lsm.buf = make([]entry.Entry, 0, lsm.Cap())
+		lsm.buf = lsm.buf[:0]
+	}
 }
 
-func (l *LSMTree) Get(key int) (int, error) {
-	max_timestamp := int64(0)
-	var newestEntry Entry
+func (lsm *LSMTree) Get(key int) (int, error) {
+	maxTimestamp := int64(0)
+	var newestEntry entry.Entry
 
 	// scan buffer
-	for _, e := range l.buf {
-		if e.Key == key && e.timestamp > max_timestamp {
+	for _, e := range lsm.buf {
+		if e.Key == key && e.Timestamp > maxTimestamp {
 			newestEntry = e
-			max_timestamp = newestEntry.timestamp
+			maxTimestamp = newestEntry.Timestamp
 		}
 	}
 
 	// if an entry exists, return it
-	if newestEntry.timestamp > 0 && !newestEntry.tombstone {
+	if newestEntry.Timestamp > 0 && !newestEntry.Tombstone {
 		return newestEntry.Value, nil
 	}
 	return 0, errors.New("not found")
 }
 
-func (l *LSMTree) GetRange(start_key int, end_key int) map[int]int {
+func (lsm *LSMTree) GetRange(start_key int, end_key int) map[int]int {
 	res := map[int]int{}
 
-	for _, e := range l.buf {
+	for _, e := range lsm.buf {
 		if e.Key >= start_key && e.Key <= end_key {
 			res[e.Key] = e.Value
 		}
@@ -77,7 +101,7 @@ func (l *LSMTree) GetRange(start_key int, end_key int) map[int]int {
 	return res
 }
 
-func (l *LSMTree) Delete(key int) {
-	e := Entry{Key: key, timestamp: time.Now().UnixNano(), tombstone: true}
-	l.put(&e)
+func (lsm *LSMTree) Delete(key int) {
+	e := entry.Entry{Key: key, Timestamp: time.Now().UnixNano(), Tombstone: true}
+	lsm.put(&e)
 }
