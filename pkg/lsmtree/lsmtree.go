@@ -83,10 +83,18 @@ func (lsm *LSMTree) Get(key int) (int, error) {
 	}
 
 	// if an entry exists, return it
-	if newestEntry.Timestamp > 0 && !newestEntry.Tombstone {
+	if newestEntry.Tombstone {
+		return 0, errors.New("Deleted")
+	} else if newestEntry.Timestamp > 0 {
 		return newestEntry.Value, nil
 	}
-	return 0, errors.New("not found")
+
+	// check levels
+  ent, err := lsm.levels.Get(key)
+  if err != nil {
+    return 0, err
+  }
+  return ent, nil
 }
 
 func (lsm *LSMTree) GetRange(start_key int, end_key int) map[int]int {

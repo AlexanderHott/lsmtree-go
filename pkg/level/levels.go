@@ -91,3 +91,7 @@ func (lvls *Levels) LvlLen() int {
 func (lvls *Levels) Len() int {
 	return len(lvls.levels)
 }
+
+func (lvls *Levels) Get(key int) (int, error) {
+	return 0, nil
+}
